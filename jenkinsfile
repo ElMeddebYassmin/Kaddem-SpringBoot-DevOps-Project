@@ -1,0 +1,170 @@
+pipeline {
+    agent any
+
+    environment{
+        NEXUS_VERSION = "nexus3"
+        NEXUS_PROTOCOL = "http"
+        NEXUS_URL = "192.168.33.10:8081"
+        NEXUS_REPOSITORY = "KaddemApp"
+        NEXUS_CREDENTIAL_ID = "deploymentRepo"
+        CREDENTIAL_ID = 'pat'
+        BUILD_FROM_BRANCH="Mouaddeb-Yassmin-Departement"
+        REPO_URL="https://github.com/DevGurus-5TWIN6/5TWIN6-DevGurus-Kaddem.git"
+    }
+
+    stages{
+
+      stage("maven"){
+          steps{
+              sh "mvn -version"
+          }
+      }
+
+        stage('Github') {
+          steps {
+            git url: 'https://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@github.com/DevGurus-5TWIN6/5TWIN6-DevGurus-Kaddem.git',
+            branch: 'Mouaddeb-Yassmin-Departement'
+            // credentialsId: 'GITHUB_PAT'
+          }
+        }
+
+
+        stage('Maven Clean'){
+            steps{
+                sh "mvn clean -Dmaven.test.failure.ignore=true"
+            }
+        }
+
+        stage('Maven Compile') {
+            steps {
+                sh "mvn compile"
+            }
+        }
+
+        stage('Maven Build'){
+            steps{
+                sh "mvn clean install -DskipTests"
+            }
+        }
+
+
+        stage('Mockito Test') {
+            steps {
+                sh "mvn -Dmaven.test.failure.ignore=true test"
+            }
+        }
+
+        stage('Jacoco'){
+
+         steps {
+             sh 'mvn jacoco:report'
+        }
+
+            }
+
+        stage('SonarQube'){
+            steps{
+                sh "mvn sonar:sonar -Dsonar.host.url=http://192.168.33.10:9000 -Dsonar.login=admin -Dsonar.password=sonaradmin"
+            }
+        }
+
+
+
+        stage('Nexus Deploy') {
+            steps {
+                script {
+                    def pom = readMavenPom file: 'pom.xml'
+                    def filesByGlob = findFiles(glob: "target/*.${pom.packaging}")
+                    if (!filesByGlob) {
+                        error "No artifact files found."
+                    } else {
+                        def artifactPath = filesByGlob[0].path
+                        def artifactExists = fileExists artifactPath
+                        if (artifactExists) {
+                            echo "*** File : ${artifactPath}, group : ${pom.groupId}, version : ${pom.version}"
+                            nexusArtifactUploader(
+                                nexusVersion: NEXUS_VERSION,
+                                protocol: NEXUS_PROTOCOL,
+                                nexusUrl: NEXUS_URL,
+                                groupId: pom.groupId,
+                                version: pom.version,
+                                repository: NEXUS_REPOSITORY,
+                                credentialsId: NEXUS_CREDENTIAL_ID,
+                                artifacts: [
+                                    [
+                                        artifactId: pom.artifactId,
+                                        classifier: '',
+                                        file: artifactPath,
+                                        type: pom.packaging
+                                    ]
+                                ]
+                            )
+                        } else {
+                            error "*** File: ${artifactPath}, could not be found"
+                        }
+                    }
+                }
+            }
+        }
+
+
+        stage('Build Docker Image'){
+            steps{
+              script{
+                    sh "mvn install -Dmaven.test.failure.ignore=true"
+                    sh "docker build -t elmeddebyassmin/kaddem_project:1.2 ."
+              }
+            }
+        }
+
+        stage ("Deploying Docker Image"){
+            steps{
+                script{
+                    sh"docker login -u elmeddebyassmin -p dockerhubyassminaccount"
+                    sh"docker push elmeddebyassmin/kaddem_project:1.2"
+                }
+            }
+        }
+
+        stage("Docker Compose"){
+            steps{
+                sh"docker compose up -d"
+            }
+        }
+
+        stage(' Prometheus'){
+            steps{
+                sh 'docker start prometheus'
+            }
+        }
+
+        stage('Grafana'){
+            steps{
+                sh 'docker start grafana'
+            }
+        }
+    }
+        post {
+          success {
+            mail to: 'meddebyesmina123@gmail.com',
+            subject: 'Jenkins Build pipeline: Success',
+            body: '''Your pipeline build success.'''
+          }
+          failure {
+            script {
+                // Capture de l'erreur
+                def currentBuild = currentBuild
+                def buildResult = currentBuild.result
+                def buildNumber = currentBuild.number
+                def buildUrl = currentBuild.absoluteUrl
+                def buildCause = currentBuild.failureCause?.toString()
+
+                // Envoi de l'e-mail avec la cause de l'erreur
+                mail to: 'meddebyesmina123@gmail.com',
+                     subject: "Jenkins Build pipeline: Failure - Build #${buildNumber}",
+                     body: "Your pipeline build failed.\n\nBuild URL: ${buildUrl}\n\nFailure Cause: ${buildCause}"
+            }
+          }
+    }
+
+    }

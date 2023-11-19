@@ -1,0 +1,74 @@
+version : "3"
+services :
+
+#  prometheus:
+#    image: prom/prometheus
+#    container_name: prometheus-server
+#    ports:
+#      - "9091:9090"
+#    restart: unless-stopped
+
+#  grafana:
+#    image: grafana/grafana
+#    container_name: grafana-server
+#    ports:
+#      - "3001:3000"
+#    restart: unless-stopped
+
+#  nexus:
+#    image: sonatype/nexus3
+#    container_name: nexus-server
+#    ports:
+#      - "8079:8081"
+#    restart: unless-stopped
+
+#  sonarqube:
+#    image: sonarqube:8.9.7-community
+#    container_name: sonarqube-server
+#    ports:
+#      - "9001:9000"
+#    restart: unless-stopped
+
+  mysqldb :
+    image: mysql:8.0
+    restart: always
+    ports:
+      - "3306:3306"
+    environment:
+      - MYSQL_DATABASE =kaddem
+      - MYSQL_USER =root
+      - MYSQL_PASSWORD =
+      - MYSQL_ALLOW_EMPTY_PASSWORD=yes
+    volumes:
+      - db:/var/lib/mysql
+
+
+  app:
+    image: elmeddebyassmin/kaddem_project:1.2
+    restart: on-failure
+    ports:
+      - "8089:8089"
+    depends_on:
+      - mysqldb
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:mysql://mysqldb:3306/kaddem?createDatabaseIfNotExist=true&useUnicode=true&useJDBCCompliantTimezoneShift=true&useLegacyDatetimeCode=false&serverTimezone=UTC
+      - SPRING_DATASOURCE_USERNAME=root
+      - SPRING_DATASOURCE_PASSWORD=
+    stdin_open: true
+    tty: true
+    volumes:
+      - ".m2:/root/.m2"
+
+  angular-app:
+    image: elmeddebyassmin/angular_project:1.2
+    container_name: frontend_angular_devops
+    ports:
+      - "4208:80"
+    restart: always
+    depends_on:
+      - app
+
+volumes:
+  db:
+  .m2:
+
